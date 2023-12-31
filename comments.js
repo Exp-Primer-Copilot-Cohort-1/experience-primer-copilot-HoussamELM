@@ -40,3 +40,5 @@ var User = mongoose.model('User', userSchema);
 // create schema for posts
 var postSchema = new Schema({
     title: String,
+    content: String,
+});
