@@ -1,44 +1,52 @@
-// create web server
-var express = require('express');
-var app = express();
-var fs = require('fs');
-var bodyParser = require('body-parser');
-var multer = require('multer');
-var upload = multer();
-var mongoose = require('mongoose');
+// Create web server
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
+const cors = require('cors');
 
-var Schema = mongoose.Schema;
+const app = express();
+app.use(bodyParser.json());
+app.use(cors());
 
-// connect to the database
-mongoose.connect('mongodb://localhost:27017/comments');
+const posts = {};
 
-// read the data from the file
-var data = fs.readFileSync('comments.json');
+const handleEvents = (type, data) => {
+  if (type === 'PostCreated') {
+    const { id, title } = data;
+    posts[id] = { id, title, comments: [] };
+  }
+  if (type === 'CommentCreated') {
+    const { id, content, postId, status } = data;
+    const post = posts[postId];
+    post.comments.push({ id, content, status });
+  }
+  if (type === 'CommentUpdated') {
+    const { id, content, postId, status } = data;
+    const post = posts[postId];
+    const comment = post.comments.find((c) => c.id === id);
+    comment.status = status;
+    comment.content = content;
+  }
+};
 
-// parse the data
-var comments = JSON.parse(data);
-
-// create schema for comments
-var commentSchema = new Schema({
-    name: String,
-    comment: String,
+app.get('/posts', (req, res) => {
+  res.send(posts);
 });
 
-// create model for comments
-var Comment = mongoose.model('Comment', commentSchema);
-
-// create schema for users
-var userSchema = new Schema({
-    name: String,
-    email: String,
-    password: String,
+// Receive event from event-bus
+app.post('/events', (req, res) => {
+  const { type, data } = req.body;
+  console.log('Received Event', type);
+  handleEvents(type, data);
+  res.send({});
 });
 
-// create model for users
-var User = mongoose.model('User', userSchema);
-
-// create schema for posts
-var postSchema = new Schema({
-    title: String,
-    content: String,
+app.listen(4002, async () => {
+  console.log('Listening on port 4002');
+  // Sync with event-bus
+  const res = await axios.get('http://event-bus-srv:4005/events');
+  for (let event of res.data) {
+    console.log('Processing event:', event.type);
+    handleEvents(event.type, event.data);
+  }
 });
